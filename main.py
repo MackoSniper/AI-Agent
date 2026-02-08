@@ -15,6 +15,11 @@ def main():
     parser = argparse.ArgumentParser(description="AI Code Assistant")
     parser.add_argument("user_prompt", type=str, help="Prompt to send to Gemini")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
+    parser.add_argument(
+        "--auto-approve",
+        action="store_true",
+        help="Auto approve risky functions without confirmation",
+    )
     args = parser.parse_args()
 
     load_dotenv()
@@ -29,7 +34,9 @@ def main():
 
     for _ in range(MAX_ITERS):
         try:
-            final_response = generate_content(client, messages, args.verbose)
+            final_response = generate_content(
+                client, messages, args.verbose, args.auto_approve
+            )
             if final_response:
                 print("Final response:")
                 print(final_response)
@@ -41,7 +48,7 @@ def main():
     sys.exit(1)
 
 
-def generate_content(client, messages, verbose):
+def generate_content(client, messages, verbose, auto_approve=False):
     response = client.models.generate_content(
         model="gemini-2.5-flash",
         contents=messages,
@@ -66,7 +73,7 @@ def generate_content(client, messages, verbose):
 
     function_responses = []
     for function_call in response.function_calls:
-        result = call_function(function_call, verbose)
+        result = call_function(function_call, verbose, auto_approve)
         if (
             not result.parts
             or not result.parts[0].function_response
