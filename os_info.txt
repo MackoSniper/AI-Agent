@@ -1,0 +1,2 @@
+System operacyjny: Linux
+Wersja systemu operacyjnego: 6.6.87.2-microsoft-standard-WSL2

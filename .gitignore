@@ -1,11 +1,24 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-
-# Virtual environments
-.venv
+# --- BEZPIECZEŃSTWO (Najważniejsze) ---
 .env
+.env.local
+
+# --- Środowisko Python/UV ---
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+
+# --- Pamięć i Dane Agenta ---
+# Nie chcemy wrzucać historii rozmów
+memory.json
+
+# Nie chcemy wrzucać plików, które agent sam wygenerował (obrazki, skrypty tymczasowe)
+agent_workspace/*
+# Ale chcemy zachować sam folder, więc dodajemy wyjątek dla pliku .gitkeep
+!agent_workspace/.gitkeep
+
+# --- Inne śmieci ---
+.DS_Store
+.vscode/
+.idea/
