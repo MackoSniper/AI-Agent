@@ -1,10 +1,7 @@
 import streamlit as st # type: ignore[import]
 import os
 import json
-from PIL import Image # type: ignore[import]
-import io
 import base64
-from streamlit_mic_recorder import mic_recorder # type: ignore[import]
 
 
 # Import our modules
@@ -13,7 +10,7 @@ from config import MAX_ITERS
 from llm_provider import PROVIDERS, describe, get_client, get_model, get_provider, missing_env, stream_complete
 from prompts import system_prompt
 from reviewer import review_code
-from memory import load_memory, save_memory, clear_memory
+from memory import delete_chat, get_active_chat, list_chats, load_chat, new_chat_id, save_chat, set_active_chat
 
 # Page configuration
 st.set_page_config(page_title="AI Agent Workspace", page_icon="🤖", layout="wide")
@@ -22,8 +19,11 @@ st.set_page_config(page_title="AI Agent Workspace", page_icon="🤖", layout="wi
 SENSITIVE_FUNCTIONS = ["write_file", "run_python_file"]
 
 # === STATE INITIALIZATION (SESSION STATE) ===
+if "chat_id" not in st.session_state:
+    st.session_state.chat_id = get_active_chat()  # the chat that was open last (shared with the CLI)
+
 if "messages" not in st.session_state:
-    st.session_state.messages = load_memory()  # Load memory from file on startup
+    st.session_state.messages = load_chat(st.session_state.chat_id)
 
 if "agent" not in st.session_state:
     st.session_state.agent = None  # state of the running agent loop (see run_agent)
@@ -31,15 +31,64 @@ if "agent" not in st.session_state:
 if "provider" not in st.session_state:
     st.session_state.provider = get_provider()  # default from LLM_PROVIDER in .env
 
+# === CHATS: switching, creating, deleting ===
+
+def _open_chat(chat_id):
+    """Makes `chat_id` the current chat and loads its history."""
+    st.session_state.chat_id = chat_id
+    st.session_state.messages = load_chat(chat_id)
+    st.session_state.agent = None  # drop any unfinished agent turn of the previous chat
+    set_active_chat(chat_id)
+
+
+def _new_chat():
+    # Nothing is saved until the first message, so empty chats never pile up in the list.
+    _open_chat(new_chat_id())
+
+
+def _delete_chat(chat_id):
+    delete_chat(chat_id)
+    if chat_id == st.session_state.chat_id:
+        remaining = list_chats()
+        _open_chat(remaining[0]["id"] if remaining else new_chat_id())
+
+
 # === UI: SIDEBAR ===
+# The delete buttons are icon-only: drop the label gap/padding so the icon sits exactly in the middle.
+st.markdown(
+    """
+    <style>
+    [class*="st-key-del_"] button { padding: 0; justify-content: center; }
+    [class*="st-key-del_"] button > div,
+    [class*="st-key-del_"] button p { margin: 0; width: 100%; display: flex; justify-content: center; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 with st.sidebar:
     st.title("🔧 Control Panel")
-    if st.button("🧹 Clear memory"):
-        clear_memory()
-        st.session_state.messages = []
-        st.session_state.agent = None
-        st.rerun()
-    
+
+    # --- CHAT HISTORY ---
+    busy = bool(st.session_state.agent and st.session_state.agent["awaiting"])  # no switching mid-approval
+    st.button("➕ New chat", width="stretch", disabled=busy, on_click=_new_chat)
+    chats = list_chats()
+    if not any(c["id"] == st.session_state.chat_id for c in chats):
+        st.button("💬 New chat", key="current_unsaved", width="stretch", type="primary", disabled=True)
+    for chat in chats:
+        is_current = chat["id"] == st.session_state.chat_id
+        col_open, col_del = st.columns([5, 1], vertical_alignment="center")
+        col_open.button(
+            chat["title"],
+            key=f"open_{chat['id']}",
+            width="stretch",
+            type="primary" if is_current else "secondary",
+            disabled=busy,
+            on_click=_open_chat,
+            args=(chat["id"],),
+        )
+        col_del.button(":material/delete:", key=f"del_{chat['id']}", help="Delete this chat", width="stretch",
+                       disabled=busy, on_click=_delete_chat, args=(chat["id"],))
+
     st.markdown("---")
     st.subheader("🧠 Model")
     st.session_state.provider = st.selectbox(
@@ -60,50 +109,29 @@ with st.sidebar:
     st.success("✅ Internet Access")
     st.success("✅ Docker Sandbox")
 
-    # --- AGENT'S EYES ---
-    st.markdown("---")
-    st.subheader("📸 Agent's Eyes")
-    uploaded_file = st.file_uploader(
-        "Show an image (Screenshot/Photo)", 
-        type=["png", "jpg", "jpeg", "webp"],
-        key="vision_input"
-    )
-    
-    image_input = None
-    if uploaded_file:
-        image_input = Image.open(uploaded_file)
-        st.image(image_input, caption="Image to send", width=True)
-
-    
-    # --- AUDIO SERVICE (MICROPHONE) ---
-    st.markdown("---")
-    st.subheader("🎤 Agent's Ears")
-
-    # Recording component
-    audio_input = mic_recorder(
-        start_prompt="🔴 Record",
-        stop_prompt="⏹️ Stop",
-        just_once=True,
-        key='recorder'
-    )
-
 # === UI: MAIN CHAT WINDOW ===
 st.title("🤖 AI Super-Agent")
 st.caption(f"Powered by {describe(st.session_state.provider)} & Python")
 
-def _message_text(content):
-    """Text of a message: a plain string or a list of parts (text/image/audio)."""
+def _render_user_content(content):
+    """Shows a user message: text plus any attached images / voice recordings."""
     if isinstance(content, str):
-        return content
-    return "\n".join(p.get("text", "") for p in content or [] if p.get("type") == "text")
+        st.markdown(content)
+        return
+    for part in content or []:
+        if part.get("type") == "text":
+            st.markdown(part["text"])
+        elif part.get("type") == "image_url":
+            st.image(base64.b64decode(part["image_url"]["url"].split(",", 1)[1]), width=200)
+        elif part.get("type") == "input_audio":
+            st.audio(base64.b64decode(part["input_audio"]["data"]), format="audio/wav")
 
 
 # Display the chat history
 for msg in st.session_state.messages:
     if msg["role"] == "user":
         with st.chat_message("user"):
-            st.markdown(_message_text(msg["content"]))
-            # Images and recordings from previous turns are skipped for readability.
+            _render_user_content(msg["content"])
 
     elif msg["role"] == "assistant":
         if msg.get("content"):
@@ -230,7 +258,7 @@ def run_agent():
                         status.update(label="Done!", state="complete", expanded=False)
                         message_placeholder.markdown(assistant_message["content"] or "")  # final text, no cursor
                         st.session_state.messages = state["messages"]
-                        save_memory(st.session_state.messages)
+                        save_chat(st.session_state.chat_id, st.session_state.messages)
                         st.session_state.agent = None
                         return
 
@@ -260,61 +288,44 @@ def run_agent():
             st.error(f"Critical error: {e}")
 
 
-# 1. Get the text input (locked while the agent is waiting for approval)
+# 1. Chat input with the standard attach (📎) and microphone (🎤) buttons built into the bar.
+#    Locked while the agent is waiting for approval.
 _agent = st.session_state.agent
-prompt_text = st.chat_input("What would you like to ask?", disabled=bool(_agent and _agent["awaiting"]))
+submission = st.chat_input(
+    "What would you like to ask?",
+    accept_file="multiple",
+    file_type=["png", "jpg", "jpeg", "webp"],
+    accept_audio=True,
+    disabled=bool(_agent and _agent["awaiting"]),
+)
 
-# 2. Check what the user did (Typed or Recorded?)
-user_action = None
+# 2. If the user sent anything (text, images, a voice recording)
+if submission:
+    text = (submission.get("text") or "").strip()
+    images = submission.get("files") or []
+    audio = submission.get("audio")
 
-if prompt_text:
-    user_action = "text"
-elif audio_input and not (_agent and _agent["awaiting"]):
-    user_action = "audio"
-
-# If there is any action (Text or Audio)
-if user_action:
     user_parts = []  # message parts in OpenAI format
-    
-    # --- SCENARIO A: TEXT ---
-    if user_action == "text":
-        user_parts.append({"type": "text", "text": prompt_text})
-        # Show in the chat
-        with st.chat_message("user"):
-            st.markdown(prompt_text)
+    if text:
+        user_parts.append({"type": "text", "text": text})
 
-    # --- SCENARIO B: AUDIO (VOICE) ---
-    elif user_action == "audio":
-        # Extract the bytes from the recording
-        audio_bytes = audio_input['bytes']
-        
-        # Add the audio file for the model
+    for image in images:
+        mime = image.type or "image/png"
+        data = base64.b64encode(image.getvalue()).decode()
+        user_parts.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{data}"}})
+
+    if audio:
         # (supported by e.g. Gemini and OpenAI audio models; other providers will ignore the recording)
-        user_parts.append({"type": "input_audio", "input_audio": {"data": base64.b64encode(audio_bytes).decode(), "format": "wav"}})
-        # Add a helper instruction
-        user_parts.append({"type": "text", "text": "Listen to this recording and carry out the instruction."})
-        
-        # Show the player in the chat (so you can see it worked)
-        with st.chat_message("user"):
-            st.audio(audio_bytes, format="audio/wav")
-            st.caption("🎙️ Voice message")
+        data = base64.b64encode(audio.getvalue()).decode()
+        user_parts.append({"type": "input_audio", "input_audio": {"data": data, "format": "wav"}})
 
-    # --- COMMON: IMAGE (If added in the sidebar) ---
-    if image_input:
-        img_byte_arr = io.BytesIO()
-        image_input.save(img_byte_arr, format=image_input.format)
-        img_bytes = img_byte_arr.getvalue()
-        
-        user_parts.append({
-            "type": "image_url",
-            "image_url": {"url": f"data:image/{image_input.format.lower()};base64,{base64.b64encode(img_bytes).decode()}"},
-        })
-        # Show the image in the chat
-        with st.chat_message("user"):
-            st.image(image_input, width=200)
+    if not text:  # nothing typed: tell the model what to do with the attachment
+        user_parts.append({"type": "text", "text": "Listen to this recording and carry out the instruction." if audio
+                           else "Look at the attached image(s) and describe them."})
 
     # 3. Save in the history
     st.session_state.messages.append({"role": "user", "content": user_parts})
+    save_chat(st.session_state.chat_id, st.session_state.messages)  # saved right away: it names the chat in the list
 
     # 4. Run the Agent
     st.session_state.agent = {
@@ -328,6 +339,7 @@ if user_action:
         "decision": None,      # user click: "approve" / "deny"
         "decided": {},         # remembered decisions by call id
     }
+    st.rerun()  # redraw so the sidebar (chat list) and the history already include this message
 
 if st.session_state.agent:
     run_agent()

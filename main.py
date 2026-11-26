@@ -16,7 +16,7 @@ def main():
     parser.add_argument("user_prompt", type=str, help="Prompt to send to the model")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
     # === NEW: Flag for clearing memory ===
-    parser.add_argument("--new", action="store_true", help="Start a fresh session (clear memory)")
+    parser.add_argument("--new", action="store_true", help="Start a new chat (the previous one stays in the history)")
     
     args = parser.parse_args()
 
