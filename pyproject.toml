@@ -2,7 +2,7 @@
 [project]
 name = "aiagent"
 version = "0.1.0"
-description = "Add your description here"
+description = "A multi-provider AI coding agent with a Streamlit chat UI, chat history, streaming and human approval for risky actions"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
