@@ -4,7 +4,7 @@ import sys
 
 from call_function import call_function, get_tools
 from config import MAX_ITERS
-from llm_provider import complete, describe, get_client, message_to_dict
+from llm_provider import describe, get_client, stream_complete
 from prompts import system_prompt
 from reviewer import review_code
 from memory import load_memory, save_memory, clear_memory
@@ -49,8 +49,7 @@ def main():
             save_memory(messages)
 
             if final_response:
-                print(final_response)
-                return
+                return  # the answer was already streamed to the terminal
                 
         except Exception as e:
             print(f"Error in iteration {i}: {e}")
@@ -61,20 +60,30 @@ def main():
 
 
 def generate_content(client, messages, verbose):
-    response = complete(messages, system=system_prompt, tools=get_tools(), client=client)
+    """One model turn. Streams the text to the terminal as it arrives.
+    Returns True when the agent has given its final answer, None when it requested tools."""
+    assistant_message, usage, streamed = None, None, False
 
-    if not response.choices:
-        raise RuntimeError("LLM API response appears to be malformed")
+    for event in stream_complete(messages, system=system_prompt, tools=get_tools(), client=client):
+        if event[0] == "text":
+            print(event[1], end="", flush=True)
+            streamed = True
+        else:
+            _, assistant_message, usage = event
 
-    if verbose and getattr(response, "usage", None):
-        print(f"[Tokens] Prompt: {response.usage.prompt_tokens} | Response: {response.usage.completion_tokens}")
+    if streamed:
+        print()  # finish the streamed line
 
-    assistant_message = message_to_dict(response.choices[0].message)
+    if verbose and usage:
+        print(f"[Tokens] Prompt: {usage.prompt_tokens} | Response: {usage.completion_tokens}")
+
     messages.append(assistant_message)
 
     tool_calls = assistant_message.get("tool_calls")
     if not tool_calls:
-        return assistant_message["content"] or "(empty response)"
+        if not streamed:
+            print("(empty response)")
+        return True
 
     tool_messages = []
 

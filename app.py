@@ -10,7 +10,7 @@ from streamlit_mic_recorder import mic_recorder # type: ignore[import]
 # Import our modules
 from call_function import call_function, get_tools
 from config import MAX_ITERS
-from llm_provider import PROVIDERS, complete, describe, get_client, get_model, get_provider, message_to_dict, missing_env
+from llm_provider import PROVIDERS, describe, get_client, get_model, get_provider, missing_env, stream_complete
 from prompts import system_prompt
 from reviewer import review_code
 from memory import load_memory, save_memory, clear_memory
@@ -208,25 +208,37 @@ def run_agent():
             while state["iter"] < MAX_ITERS:
                 if state["calls"] is None:
                     status.write(f"🔄 Iteration {state['iter'] + 1}...")
-                    response = complete(
+                    # Stream the answer into the placeholder as it arrives (▌ = cursor)
+                    text, assistant_message = "", None
+                    for event in stream_complete(
                         state["messages"],
                         system=system_prompt,
                         tools=get_tools(),
                         client=get_client(st.session_state.provider),
                         provider=st.session_state.provider,
-                    )
+                    ):
+                        if event[0] == "text":
+                            text += event[1]
+                            message_placeholder.markdown(text + "▌")
+                        else:
+                            assistant_message = event[1]
                     state["iter"] += 1
-                    assistant_message = message_to_dict(response.choices[0].message)
                     state["messages"].append(assistant_message)
 
                     # No tool calls = the agent is done
                     if not assistant_message.get("tool_calls"):
                         status.update(label="Done!", state="complete", expanded=False)
-                        message_placeholder.markdown(assistant_message["content"] or "")
+                        message_placeholder.markdown(assistant_message["content"] or "")  # final text, no cursor
                         st.session_state.messages = state["messages"]
                         save_memory(st.session_state.messages)
                         st.session_state.agent = None
                         return
+
+                    # Text that came before tool calls ("Let me check...") goes into the status log,
+                    # so the placeholder is free for the next streamed answer.
+                    if assistant_message.get("content"):
+                        status.write(assistant_message["content"])
+                    message_placeholder.empty()
 
                     state["calls"], state["idx"], state["tool_messages"] = assistant_message["tool_calls"], 0, []
 
