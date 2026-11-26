@@ -12,6 +12,8 @@ chat history and working Approve/Deny buttons in the Streamlit app.
 It is not meant for production use. Scripts run directly on your machine, not in an
 isolated container, so treat it as a playground and read the code before approving it.
 
+![Streamlit app with an approval card](docs/screenshot.png)
+
 ## Overview
 
 - **Two interfaces:** a Streamlit chat app (`app.py`) and a one-shot CLI (`main.py`). Both stream the answer as it is written.
