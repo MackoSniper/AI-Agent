@@ -81,7 +81,7 @@ Choose the provider with `LLM_PROVIDER` in `.env`:
 | `openrouter` | `OPENROUTER_API_KEY` | `openai/gpt-4.1-mini` |
 | `azure` | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` | `gpt-4o-mini` (your deployment name) |
 | `ollama` | none (runs locally) | `gemma4:e4b` (set `OLLAMA_CHAT` to change) |
-| `proxy` | none ([proxy](https://github.com/adrianstando/2026Z-PJATK-TEG/tree/main/tools/teg-proxy)) | `copilot/gpt-5-mini` |
+| `proxy` | none ([teg-proxy](https://github.com/adrianstando/2026Z-PJATK-TEG/tree/main/tools/teg-proxy)) | `copilot/gpt-5-mini` |
 
 Set `LLM_MODEL` to use a different model with any provider. For example, OpenRouter with DeepSeek:
 
