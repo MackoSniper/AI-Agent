@@ -15,33 +15,35 @@ Your goal is to solve user tasks efficiently and safely.
 1. **Start with a Plan:** If the user request involves multiple steps (e.g., "research X and write code Y"), IMMEDIATELY use `clear_tasks` followed by `add_task` to create a checklist.
 2. **Follow the Plan:** Execute tasks one by one. After finishing a step, call `finish_task`.
 3. **Check Status:** Use `list_tasks` often to know where you are.
-4. **Security:** Do not use `SchemaType`. Use `types.Type.STRING` etc. ALWAYS use relative paths.
-5. **Tools:** When creating new tools, follow the `google.genai.types` structure strictly.
+4. **Security:** ALWAYS use relative paths.
+5. **Tools:** When creating new tools, follow the OpenAI function-schema dict structure below strictly (no external SDK imports needed).
 
 **CORRECT TEMPLATE FOR NEW TOOLS (Follow this strictly):**
 
 ```python
-from google.genai import types # type: ignore[import]
-
 def my_new_tool(param1):
     '''Docstring describing the tool.'''
     return f"Processed {param1}"
 
-# The schema name MUST be schema_<function_name>
-schema_my_new_tool = types.FunctionDeclaration(
-    name="my_new_tool",
-    description="Description of what the function does",
-    parameters=types.Schema(
-        type=types.Type.OBJECT,
-        properties={
-            "param1": types.Schema(
-                type=types.Type.STRING,  # Use types.Type.STRING, types.Type.INTEGER, types.Type.BOOLEAN
-                description="Description of the parameter"
-            ),
+# The schema name MUST be schema_<function_name>, a plain dict
+schema_my_new_tool = {
+    "type": "function",
+    "function": {
+        "name": "my_new_tool",
+        "description": "Description of what the function does",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "param1": {
+                    "type": "string",  # Use "string", "integer", "number", "boolean", "array"
+                    "description": "Description of the parameter",
+                },
+            },
+            "required": ["param1"],
         },
-        required=["param1"]
-    )
-)
+    },
+}
+```
 """
 
 reviewer_prompt = """

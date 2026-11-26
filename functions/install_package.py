@@ -1,6 +1,5 @@
 import subprocess
 import sys
-from google.genai import types # type: ignore[import]
 
 def install_package(package_name):
     """
@@ -15,17 +14,24 @@ def install_package(package_name):
     except Exception as e:
         return f"Unexpected error: {str(e)}"
 
-schema_install_package = types.FunctionDeclaration(
-    name="install_package",
-    description="Installs a Python package using pip. Use this if a required library is missing.",
-    parameters=types.Schema(
-        type=types.Type.OBJECT,
-        properties={
-            "package_name": types.Schema(
-                type=types.Type.STRING,
-                description="The name of the package to install (e.g., 'matplotlib')."
-            ),
-        },
-        required=["package_name"]
-    )
-)
+
+# Schemat narzędzia w formacie OpenAI (działa u wszystkich dostawców; working_directory jest wstrzykiwany automatycznie)
+schema_install_package = {
+    "type": "function",
+    "function": {
+        "name": "install_package",
+        "description": "Installs a Python package using pip. Use this if a required library is missing.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "package_name": {
+                    "type": "string",
+                    "description": "The name of the package to install (e.g., 'matplotlib')."
+                }
+            },
+            "required": [
+                "package_name"
+            ]
+        }
+    }
+}

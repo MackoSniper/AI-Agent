@@ -1,6 +1,4 @@
 import os
-from google.genai import types  # type: ignore[import]
-from functions.security_utils import get_safe_path  
 
 def write_file(working_directory, file_path, content):
     try:
@@ -23,21 +21,29 @@ def write_file(working_directory, file_path, content):
     except Exception as e:
         return f"Error: writing to file: {e}"
 
-schema_write_file = types.FunctionDeclaration(
-    name="write_file",
-    description="Writes content to a specified file relative to the working directory",
-    parameters=types.Schema(
-        type=types.Type.OBJECT,
-        properties={
-            "file_path": types.Schema(
-                type=types.Type.STRING,
-                description="File path to write content to, relative to the working directory",
-            ),
-            "content": types.Schema(
-                type=types.Type.STRING,
-                description="Content to write into the file",
-            ),
-        },
-        required=["file_path", "content"] 
-    ),
-)
+
+# Schemat narzędzia w formacie OpenAI (działa u wszystkich dostawców; working_directory jest wstrzykiwany automatycznie)
+schema_write_file = {
+    "type": "function",
+    "function": {
+        "name": "write_file",
+        "description": "Writes content to a specified file relative to the working directory",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "File path to write content to, relative to the working directory"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Content to write into the file"
+                }
+            },
+            "required": [
+                "file_path",
+                "content"
+            ]
+        }
+    }
+}

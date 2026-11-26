@@ -1,7 +1,6 @@
 import os
 import subprocess
 import sys  
-from google.genai import types  # type: ignore[import]
 
 def run_python_file(working_directory, file_path, args=None):
     try:   
@@ -55,25 +54,32 @@ def run_python_file(working_directory, file_path, args=None):
         
     except Exception as e:
         return f"Error: executing Python file: {e}"
-    
-schema_run_python_file = types.FunctionDeclaration(
-    name="run_python_file",
-    description="Executes a Python file located in the working directory and captures its output",
-    parameters=types.Schema(
-        type=types.Type.OBJECT,
-        properties={
-            "file_path": types.Schema(
-                type=types.Type.STRING,
-                description="File path to the Python file to execute, relative to the working directory",
-            ),
-            "args": types.Schema(
-                type=types.Type.ARRAY,
-                items=types.Schema(
-                    type=types.Type.STRING,
-                ),
-                description="Optional list of arguments to pass to the Python script",
-            ),
-        },
-        required=["file_path"] 
-    ),
-)
+
+
+# Schemat narzędzia w formacie OpenAI (działa u wszystkich dostawców; working_directory jest wstrzykiwany automatycznie)
+schema_run_python_file = {
+    "type": "function",
+    "function": {
+        "name": "run_python_file",
+        "description": "Executes a Python file located in the working directory and captures its output",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "File path to the Python file to execute, relative to the working directory"
+                },
+                "args": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Optional list of arguments to pass to the Python script"
+                }
+            },
+            "required": [
+                "file_path"
+            ]
+        }
+    }
+}

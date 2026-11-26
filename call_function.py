@@ -2,7 +2,7 @@ import os
 import sys
 import importlib.util
 import inspect
-from google.genai import types  # type: ignore[import]
+import json
 
 from config import WORKING_DIR, PROJECT_ROOT
 
@@ -38,9 +38,9 @@ def load_tool_from_file(filepath):
 
         # Skanowanie zawartości modułu
         for name, obj in inspect.getmembers(module):
-            if isinstance(obj, types.FunctionDeclaration):
+            if isinstance(obj, dict) and obj.get("type") == "function" and "function" in obj:
                 schema = obj
-                tool_name = schema.name
+                tool_name = schema["function"]["name"]
                 
                 if hasattr(module, tool_name) and callable(getattr(module, tool_name)):
                     func = getattr(module, tool_name)
@@ -49,7 +49,7 @@ def load_tool_from_file(filepath):
                     # Jeśli narzędzie już istnieje, usuwamy starą definicję z listy declarations
                     if tool_name in function_map:
                         # Filtrujemy listę globalną, usuwając stary wpis
-                        declarations = [d for d in declarations if d.name != tool_name]
+                        declarations = [d for d in declarations if d["function"]["name"] != tool_name]
 
                     # Rejestracja nowej wersji
                     function_map[tool_name] = func
@@ -71,52 +71,49 @@ def refresh_tools():
         for filename in os.listdir(DYNAMIC_FUNCTIONS_DIR):
             load_tool_from_file(os.path.join(DYNAMIC_FUNCTIONS_DIR, filename))
 
-    return types.Tool(function_declarations=declarations)
+    return declarations
+
 
 # Inicjalizacja
-available_functions_tool = refresh_tools() 
+available_tools = refresh_tools()
 
 
-def call_function(function_call, verbose=False):
+def get_tools():
+    """Aktualna lista schematów narzędzi w formacie OpenAI (do parametru `tools=`)."""
+    return declarations
+
+
+def _tool_message(tool_call_id, payload):
+    return {"role": "tool", "tool_call_id": tool_call_id, "content": json.dumps(payload, ensure_ascii=False, default=str)}
+
+
+def call_function(tool_call, verbose=False):
+    """Wykonuje narzędzie. `tool_call` to słownik {"id", "function": {"name", "arguments"}}.
+    Zwraca wiadomość roli "tool" gotową do dopisania do historii."""
+    function_name = tool_call["function"]["name"] or ""
+    call_id = tool_call["id"]
+
     if verbose:
-        print(f" - Calling function: {function_call.name}")
+        print(f" - Calling function: {function_name}")
 
-    function_name = function_call.name or ""
-    
     if function_name not in function_map:
         # Próba odświeżenia narzędzi w locie, jeśli funkcji nie ma (opcjonalne)
         refresh_tools()
         if function_name not in function_map:
-            return types.Content(
-                role="tool",
-                parts=[types.Part.from_function_response(
-                    name=function_name,
-                    response={"error": f"Unknown function: {function_name}"},
-                )],
-            )
+            return _tool_message(call_id, {"error": f"Unknown function: {function_name}"})
 
-    args = dict(function_call.args) if function_call.args else {}
-    
+    try:
+        args = json.loads(tool_call["function"].get("arguments") or "{}")
+    except json.JSONDecodeError as e:
+        return _tool_message(call_id, {"error": f"Invalid JSON arguments: {e}"})
+
     func_obj = function_map[function_name]
     sig = inspect.signature(func_obj)
-    
+
     if "working_directory" in sig.parameters:
         args["working_directory"] = WORKING_DIR
 
     try:
-        result = func_obj(**args)
-        return types.Content(
-            role="tool",
-            parts=[types.Part.from_function_response(
-                name=function_name,
-                response={"result": result},
-            )],
-        )
+        return _tool_message(call_id, {"result": func_obj(**args)})
     except Exception as e:
-        return types.Content(
-            role="tool",
-            parts=[types.Part.from_function_response(
-                name=function_name,
-                response={"error": f"Function execution failed: {str(e)}"},
-            )],
-        )
+        return _tool_message(call_id, {"error": f"Function execution failed: {str(e)}"})

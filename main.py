@@ -1,13 +1,10 @@
 import argparse
-import os
+import json
 import sys
 
-from dotenv import load_dotenv # type: ignore[import]
-from google import genai
-from google.genai import types # type: ignore[import]
-
-from call_function import available_functions_tool, call_function
+from call_function import call_function, get_tools
 from config import MAX_ITERS
+from llm_provider import complete, describe, get_client, message_to_dict
 from prompts import system_prompt
 from reviewer import review_code
 from memory import load_memory, save_memory, clear_memory
@@ -16,7 +13,7 @@ SENSITIVE_FUNCTIONS = ["write_file", "run_python_file"]
 
 def main():
     parser = argparse.ArgumentParser(description="AI Code Assistant")
-    parser.add_argument("user_prompt", type=str, help="Prompt to send to Gemini")
+    parser.add_argument("user_prompt", type=str, help="Prompt to send to the model")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
     # === NOWOŚĆ: Flaga do czyszczenia pamięci ===
     parser.add_argument("--new", action="store_true", help="Start a fresh session (clear memory)")
@@ -27,12 +24,8 @@ def main():
     if args.new:
         clear_memory()
 
-    load_dotenv()
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY environment variable not set")
-
-    client = genai.Client(api_key=api_key)
+    # Dostawca wybierany zmienną LLM_PROVIDER w .env (patrz llm_provider.py)
+    client = get_client()
 
     # === LOGIKA PAMIĘCI ===
     # 1. Wczytujemy starą historię
@@ -40,9 +33,10 @@ def main():
 
     # 2. Jeśli historia jest pusta, zaczynamy od zera. 
     #    Jeśli nie jest pusta, dopisujemy nową wiadomość użytkownika do istniejącej listy.
-    messages.append(types.Content(role="user", parts=[types.Part(text=args.user_prompt)]))
+    messages.append({"role": "user", "content": args.user_prompt})
     
     if args.verbose:
+        print(f"Provider: {describe()}")
         print(f"User prompt: {args.user_prompt}\n")
         print(f"[MEMORY] Loaded {len(messages)-1} previous messages from context.")
 
@@ -67,91 +61,73 @@ def main():
 
 
 def generate_content(client, messages, verbose):
-    response = client.models.generate_content(
-        model="gemini-2.5-flash", 
-        contents=messages,
-        config=types.GenerateContentConfig(
-            tools=[available_functions_tool], 
-            system_instruction=system_prompt
-        ),
-    )
-    
-    if not response.usage_metadata:
-        raise RuntimeError("Gemini API response appears to be malformed")
+    response = complete(messages, system=system_prompt, tools=get_tools(), client=client)
 
-    if verbose:
-        print(f"[Tokens] Prompt: {response.usage_metadata.prompt_token_count} | Response: {response.usage_metadata.candidates_token_count}")
+    if not response.choices:
+        raise RuntimeError("LLM API response appears to be malformed")
 
-    if response.candidates:
-        for candidate in response.candidates:
-            if candidate.content:
-                messages.append(candidate.content)
+    if verbose and getattr(response, "usage", None):
+        print(f"[Tokens] Prompt: {response.usage.prompt_tokens} | Response: {response.usage.completion_tokens}")
 
-    if not response.function_calls:
-        return response.text
+    assistant_message = message_to_dict(response.choices[0].message)
+    messages.append(assistant_message)
 
-    function_responses = []
-    
-    for function_call in response.function_calls:
-        func_name = function_call.name
-        func_args = function_call.args
-        
-        # === REVIEWER (FAZA 3) ===
+    tool_calls = assistant_message.get("tool_calls")
+    if not tool_calls:
+        return assistant_message["content"] or "(empty response)"
+
+    tool_messages = []
+
+    for tool_call in tool_calls:
+        func_name = tool_call["function"]["name"]
+        try:
+            func_args = json.loads(tool_call["function"]["arguments"] or "{}")
+        except json.JSONDecodeError:
+            func_args = {}
+
+        def reject(reason):
+            tool_messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call["id"],
+                "content": json.dumps({"error": reason}, ensure_ascii=False),
+            })
+
         # === KROK 1: AUTOMATYCZNY AUDYT (REVIEWER) ===
         # Sprawdzamy kod tylko przy próbie zapisu pliku
         if func_name == "write_file":
-            # Pobieramy nazwę pliku, żeby sprawdzić rozszerzenie
             file_path = func_args.get("file_path", "")
-            
+
             # Uruchamiamy Reviewera TYLKO dla plików .py
             # Pliki .txt, .json, .md są bezpieczne (chyba że to skrypt bash, ale skupiamy się na Pythonie)
             if file_path.endswith(".py"):
-                content_to_review = func_args.get("content", "")
-                
-                is_approved, feedback = review_code(content_to_review)
-                
+                is_approved, feedback = review_code(func_args.get("content", ""))
+
                 if not is_approved:
-                    rejection_part = types.Part.from_function_response(
-                        name=func_name,
-                        response={"error": f"Security Review Failed: {feedback}. Please fix the code and try again."}
-                    )
-                    function_responses.append(rejection_part)
-                    continue 
-        # =============================================
+                    reject(f"Security Review Failed: {feedback}. Please fix the code and try again.")
+                    continue
 
         # === SECURITY CHECK (FAZA 1) ===
         if func_name in SENSITIVE_FUNCTIONS:
             print(f"\n⚠️  [SECURITY ALERT] Agent wants to execute: {func_name}")
             print(f"    Args: {func_args}")
             user_approval = input(">> Allow? (y/N): ").strip().lower()
-            
+
             if user_approval != 'y':
                 print("❌ Denied by user.")
-                rejection_part = types.Part.from_function_response(
-                    name=func_name,
-                    response={"error": "User denied execution of this function."}
-                )
-                function_responses.append(rejection_part)
-                continue 
+                reject("User denied execution of this function.")
+                continue
 
-        result = call_function(function_call, verbose)
-        
-        if (
-            not result.parts
-            or not result.parts[0].function_response
-            or not result.parts[0].function_response.response
-        ):
-            raise RuntimeError(f"Empty function response for {func_name}")
-            
+        result = call_function(tool_call, verbose)
+
         if verbose:
-            print(f"-> Output: {result.parts[0].function_response.response}")
-            
-        function_responses.append(result.parts[0])
+            print(f"-> Output: {result['content']}")
 
-    messages.append(types.Content(role="tool", parts=function_responses))
-    
+        tool_messages.append(result)
+
+    messages.extend(tool_messages)
+
     save_memory(messages)
-    
+
     return None
 
 if __name__ == "__main__":

@@ -1,6 +1,5 @@
 import os
 import requests # type: ignore[import]
-from google.genai import types # type: ignore[import]
 
 def search_web(query, count=5):
     """
@@ -51,22 +50,28 @@ def search_web(query, count=5):
     except Exception as e:
         return f"Error connecting to search API: {str(e)}"
 
-# Definicja schematu dla Gemini
-schema_search_web = types.FunctionDeclaration(
-    name="search_web",
-    description="Searches the internet for real-time information using Brave Search.",
-    parameters=types.Schema(
-        type=types.Type.OBJECT,
-        properties={
-            "query": types.Schema(
-                type=types.Type.STRING,
-                description="The search query (e.g., 'python 3.12 release date', 'fix error X').",
-            ),
-            "count": types.Schema(
-                type=types.Type.INTEGER,
-                description="Number of results to return (default 5).",
-            ),
-        },
-        required=["query"],
-    ),
-)
+
+# Schemat narzędzia w formacie OpenAI (działa u wszystkich dostawców; working_directory jest wstrzykiwany automatycznie)
+schema_search_web = {
+    "type": "function",
+    "function": {
+        "name": "search_web",
+        "description": "Searches the internet for real-time information using Brave Search.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query (e.g., 'python 3.12 release date', 'fix error X')."
+                },
+                "count": {
+                    "type": "integer",
+                    "description": "Number of results to return (default 5)."
+                }
+            },
+            "required": [
+                "query"
+            ]
+        }
+    }
+}

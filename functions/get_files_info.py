@@ -1,6 +1,5 @@
 import os
 
-from google.genai import types  # type: ignore[import]
 
 def get_files_info(working_directory, directory="."):
     try:
@@ -29,18 +28,22 @@ def get_files_info(working_directory, directory="."):
         return "\n".join(lines)
     except Exception as e:
         return f"Error: {str(e)}"
-    
 
-schema_get_files_info = types.FunctionDeclaration(
-    name="get_files_info",
-    description="Lists files in a specified directory relative to the working directory, providing file size and directory status",
-    parameters=types.Schema(
-        type=types.Type.OBJECT,
-        properties={
-            "directory": types.Schema(
-                type=types.Type.STRING,
-                description="Directory path to list files from, relative to the working directory (default is the working directory itself)",
-            ),
-        },
-    ),
-)
+
+# Schemat narzędzia w formacie OpenAI (działa u wszystkich dostawców; working_directory jest wstrzykiwany automatycznie)
+schema_get_files_info = {
+    "type": "function",
+    "function": {
+        "name": "get_files_info",
+        "description": "Lists files in a specified directory relative to the working directory, providing file size and directory status",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "directory": {
+                    "type": "string",
+                    "description": "Directory path to list files from, relative to the working directory (default is the working directory itself)"
+                }
+            }
+        }
+    }
+}

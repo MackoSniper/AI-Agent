@@ -1,6 +1,5 @@
 import json
 import os
-from google.genai import types # type: ignore[import]
 
 def _get_tasks_path(working_directory):
     return os.path.join(working_directory, "tasks.json")
@@ -60,52 +59,68 @@ def clear_tasks(working_directory):
     _save_tasks(working_directory, [])
     return "Task list cleared."
 
-# === SCHEMATY DLA GEMINI ===
 
-schema_add_task = types.FunctionDeclaration(
-    name="add_task",
-    description="Adds a new task to the internal plan. Use this at the start of complex goals.",
-    parameters=types.Schema(
-        type=types.Type.OBJECT,
-        properties={
-            "description": types.Schema(type=types.Type.STRING, description="Description of the task to be done."),
-            "working_directory": types.Schema(type=types.Type.STRING) # Injectowane automatycznie
-        },
-        required=["description"]
-    )
-)
+# Schemat narzędzia w formacie OpenAI (działa u wszystkich dostawców; working_directory jest wstrzykiwany automatycznie)
+schema_add_task = {
+    "type": "function",
+    "function": {
+        "name": "add_task",
+        "description": "Adds a new task to the internal plan. Use this at the start of complex goals.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "description": "Description of the task to be done."
+                }
+            },
+            "required": [
+                "description"
+            ]
+        }
+    }
+}
 
-schema_list_tasks = types.FunctionDeclaration(
-    name="list_tasks",
-    description="Shows the current status of all tasks.",
-    parameters=types.Schema(
-        type=types.Type.OBJECT,
-        properties={
-            "working_directory": types.Schema(type=types.Type.STRING) # Injectowane automatycznie
-        },
-    )
-)
+schema_list_tasks = {
+    "type": "function",
+    "function": {
+        "name": "list_tasks",
+        "description": "Shows the current status of all tasks.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    }
+}
 
-schema_finish_task = types.FunctionDeclaration(
-    name="finish_task",
-    description="Marks a specific task as completed.",
-    parameters=types.Schema(
-        type=types.Type.OBJECT,
-        properties={
-            "task_id": types.Schema(type=types.Type.INTEGER, description="The ID of the task to complete."),
-            "working_directory": types.Schema(type=types.Type.STRING) # Injectowane automatycznie
-        },
-        required=["task_id"]
-    )
-)
+schema_finish_task = {
+    "type": "function",
+    "function": {
+        "name": "finish_task",
+        "description": "Marks a specific task as completed.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "integer",
+                    "description": "The ID of the task to complete."
+                }
+            },
+            "required": [
+                "task_id"
+            ]
+        }
+    }
+}
 
-schema_clear_tasks = types.FunctionDeclaration(
-    name="clear_tasks",
-    description="Deletes all tasks from the plan. Use before starting a completely new project.",
-    parameters=types.Schema(
-        type=types.Type.OBJECT,
-        properties={
-            "working_directory": types.Schema(type=types.Type.STRING) # Injectowane automatycznie
-        },
-    )
-)
+schema_clear_tasks = {
+    "type": "function",
+    "function": {
+        "name": "clear_tasks",
+        "description": "Deletes all tasks from the plan. Use before starting a completely new project.",
+        "parameters": {
+            "type": "object",
+            "properties": {}
+        }
+    }
+}

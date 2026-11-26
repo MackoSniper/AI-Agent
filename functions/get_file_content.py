@@ -1,6 +1,5 @@
 import os
 from config import MAX_CHARS
-from google.genai import types  # type: ignore[import]
 
 def get_file_content(working_directory, file_path):
     try:   
@@ -26,19 +25,25 @@ def get_file_content(working_directory, file_path):
     
     except Exception as e:
         return f"Error: reading file: {str(e)}"
-    
 
-schema_get_file_content = types.FunctionDeclaration(
-    name="get_file_content",
-    description="Retrieves the content of a specified file relative to the working directory",
-    parameters=types.Schema(
-        type=types.Type.OBJECT,
-        properties={
-            "file_path": types.Schema(
-                type=types.Type.STRING,
-                description="File path to read content from, relative to the working directory",
-            ),
-        },
-        required=["file_path"], # Warto dodać
-    ),
-)
+
+# Schemat narzędzia w formacie OpenAI (działa u wszystkich dostawców; working_directory jest wstrzykiwany automatycznie)
+schema_get_file_content = {
+    "type": "function",
+    "function": {
+        "name": "get_file_content",
+        "description": "Retrieves the content of a specified file relative to the working directory",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "File path to read content from, relative to the working directory"
+                }
+            },
+            "required": [
+                "file_path"
+            ]
+        }
+    }
+}
