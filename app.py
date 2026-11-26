@@ -1,66 +1,70 @@
 import streamlit as st # type: ignore[import]
 import os
 import json
-import time
 from PIL import Image # type: ignore[import]
 import io
 import base64
 from streamlit_mic_recorder import mic_recorder # type: ignore[import]
 
 
-# Importujemy nasze moduły
+# Import our modules
 from call_function import call_function, get_tools
+from config import MAX_ITERS
 from llm_provider import PROVIDERS, complete, describe, get_client, get_model, get_provider, message_to_dict, missing_env
 from prompts import system_prompt
 from reviewer import review_code
 from memory import load_memory, save_memory, clear_memory
 
-# Konfiguracja strony
+# Page configuration
 st.set_page_config(page_title="AI Agent Workspace", page_icon="🤖", layout="wide")
 
-# Funkcje wrażliwe wymagające zgody
+# Sensitive functions that require approval
 SENSITIVE_FUNCTIONS = ["write_file", "run_python_file"]
 
-# === INICJALIZACJA STANU (SESSION STATE) ===
+# === STATE INITIALIZATION (SESSION STATE) ===
 if "messages" not in st.session_state:
-    st.session_state.messages = load_memory()  # Ładujemy pamięć z pliku na start
+    st.session_state.messages = load_memory()  # Load memory from file on startup
+
+if "agent" not in st.session_state:
+    st.session_state.agent = None  # state of the running agent loop (see run_agent)
 
 if "provider" not in st.session_state:
-    st.session_state.provider = get_provider()  # domyślnie z LLM_PROVIDER w .env
+    st.session_state.provider = get_provider()  # default from LLM_PROVIDER in .env
 
-# === UI: PASEK BOCZNY ===
+# === UI: SIDEBAR ===
 with st.sidebar:
-    st.title("🔧 Panel Sterowania")
-    if st.button("🧹 Wyczyść pamięć"):
+    st.title("🔧 Control Panel")
+    if st.button("🧹 Clear memory"):
         clear_memory()
         st.session_state.messages = []
+        st.session_state.agent = None
         st.rerun()
     
     st.markdown("---")
     st.subheader("🧠 Model")
     st.session_state.provider = st.selectbox(
-        "Dostawca LLM",
+        "LLM provider",
         PROVIDERS,
         index=PROVIDERS.index(st.session_state.provider),
     )
     st.caption(f"Model: `{get_model(st.session_state.provider)}`")
     missing = missing_env(st.session_state.provider)
     if missing:
-        st.error(f"Brak w .env: {', '.join(missing)}")
+        st.error(f"Missing in .env: {', '.join(missing)}")
 
     st.markdown("---")
-    st.markdown("**Aktywne moduły:**")
+    st.markdown("**Active modules:**")
     st.success("✅ Dynamic Loader")
     st.success("✅ Code Reviewer")
     st.success("✅ Long-term Memory")
     st.success("✅ Internet Access")
     st.success("✅ Docker Sandbox")
 
-    # --- OCZY AGENTA ---
+    # --- AGENT'S EYES ---
     st.markdown("---")
-    st.subheader("📸 Oczy Agenta")
+    st.subheader("📸 Agent's Eyes")
     uploaded_file = st.file_uploader(
-        "Pokaż obraz (Screenshot/Foto)", 
+        "Show an image (Screenshot/Photo)", 
         type=["png", "jpg", "jpeg", "webp"],
         key="vision_input"
     )
@@ -68,99 +72,222 @@ with st.sidebar:
     image_input = None
     if uploaded_file:
         image_input = Image.open(uploaded_file)
-        st.image(image_input, caption="Obraz do wysłania", width=True)
+        st.image(image_input, caption="Image to send", width=True)
 
     
-    # --- USŁUGA AUDIO (MIKROFON) ---
+    # --- AUDIO SERVICE (MICROPHONE) ---
     st.markdown("---")
-    st.subheader("🎤 Uszy Agenta")
+    st.subheader("🎤 Agent's Ears")
 
-    # Komponent nagrywający
+    # Recording component
     audio_input = mic_recorder(
-        start_prompt="🔴 Nagraj",
+        start_prompt="🔴 Record",
         stop_prompt="⏹️ Stop",
         just_once=True,
         key='recorder'
     )
 
-# === UI: GŁÓWNE OKNO CZATU ===
+# === UI: MAIN CHAT WINDOW ===
 st.title("🤖 AI Super-Agent")
 st.caption(f"Powered by {describe(st.session_state.provider)} & Python")
 
 def _message_text(content):
-    """Tekst z wiadomości: zwykły string albo lista części (tekst/obraz/audio)."""
+    """Text of a message: a plain string or a list of parts (text/image/audio)."""
     if isinstance(content, str):
         return content
     return "\n".join(p.get("text", "") for p in content or [] if p.get("type") == "text")
 
 
-# Wyświetlanie historii czatu
+# Display the chat history
 for msg in st.session_state.messages:
     if msg["role"] == "user":
         with st.chat_message("user"):
             st.markdown(_message_text(msg["content"]))
-            # Obrazy i nagrania z poprzednich tur pomijamy dla czytelności.
+            # Images and recordings from previous turns are skipped for readability.
 
     elif msg["role"] == "assistant":
         if msg.get("content"):
             with st.chat_message("assistant"):
                 st.markdown(msg["content"])
 
-    # === Wyświetlanie wykresów stworzonych przez Agenta ===
+    # === Display charts created by the Agent ===
     elif msg["role"] == "tool":
-        # Sprawdzamy, czy narzędzie zwróciło informację o stworzonym pliku graficznym
+        # Check whether the tool returned information about a created image file
         resp = str(msg["content"])
-        # Prosta heurystyka: jeśli odpowiedź zawiera ".png" lub ".jpg"
+        # Simple heuristic: if the response contains ".png" or ".jpg"
         if ".png" in resp or ".jpg" in resp:
             import glob
-            # Szukamy najnowszego pliku w workspace
+            # Look for the newest file in the workspace
             files = glob.glob("agent_workspace/*.png") + glob.glob("agent_workspace/*.jpg")
             if files:
                 latest_file = max(files, key=os.path.getmtime)
                 with st.chat_message("assistant"):
-                    st.image(latest_file, caption="Wygenerowany plik", width=400)
+                    st.image(latest_file, caption="Generated file", width=400)
 
-# === LOGIKA AGENTA ===
+# === AGENT LOGIC ===
+# Streamlit re-runs the whole script after every click, so the agent loop is resumable:
+# its state (history, tool-call queue, pending approval) is kept in st.session_state.agent.
+# When a sensitive action needs approval, the loop shows buttons and ends the current re-run;
+# the click sets the decision and the script resumes the loop at exactly that point.
 
-# 1. Pobieramy input tekstowy
-prompt_text = st.chat_input("O co chcesz zapytać?")
+def _tool_error(call, message):
+    return {"role": "tool", "tool_call_id": call["id"], "content": json.dumps({"error": message}, ensure_ascii=False)}
 
-# 2. Sprawdzamy, co zrobił użytkownik (Napisał czy Nagrał?)
+
+def _decide(decision):
+    st.session_state.agent["decision"] = decision
+
+
+def _approval_card(call, name, args):
+    """Card with Approve / Deny buttons for a sensitive action."""
+    st.warning(f"⚠️ Agent wants to execute: **{name}**")
+    if name == "write_file":
+        st.caption(f"File: `{args.get('file_path', '')}`")
+        st.code(args.get("content", ""), language="python" if args.get("file_path", "").endswith(".py") else None)
+    elif name == "run_python_file":
+        st.caption(f"File: `{args.get('file_path', '')}`  |  arguments: `{args.get('args') or []}`")
+    else:
+        st.json(args)
+    col_ok, col_no, _ = st.columns([1, 1, 4])
+    col_ok.button("✅ Approve", key=f"ok_{call['id']}", type="primary", on_click=_decide, args=("approve",))
+    col_no.button("❌ Deny", key=f"no_{call['id']}", on_click=_decide, args=("deny",))
+
+
+def _process_call(call, state, status):
+    """Handles a single tool call. Returns a 'tool' role message, or None when waiting for approval."""
+    name = call["function"]["name"]
+    try:
+        args = json.loads(call["function"]["arguments"] or "{}")
+    except json.JSONDecodeError:
+        args = {}
+
+    status.write(f"🛠️ Agent wants to use: `{name}`")
+
+    # --- REVIEWER (once per call, result remembered while waiting for approval) ---
+    if name == "write_file" and args.get("file_path", "").endswith(".py"):
+        if call["id"] not in state["reviews"]:
+            status.info(f"🔍 Reviewer is checking the code: {args['file_path']}")
+            state["reviews"][call["id"]] = review_code(args.get("content", ""))
+        is_approved, feedback = state["reviews"][call["id"]]
+        if not is_approved:
+            status.error(f"❌ Reviewer rejected the code: {feedback}")
+            return _tool_error(call, f"Security Review Failed: {feedback}. Please fix the code and try again.")
+        status.success("✅ Reviewer approved the code.")
+
+    # --- USER APPROVAL ---
+    if name in SENSITIVE_FUNCTIONS:
+        verdict = state["decided"].get(call["id"])
+        if verdict is None:
+            if state["awaiting"] != call["id"]:
+                state["awaiting"] = call["id"]
+                st.rerun()  # re-run so the chat box is locked while approval is pending
+            if state["decision"] is None:
+                status.update(label="Waiting for your approval...", state="running", expanded=True)
+                _approval_card(call, name, args)
+                return None
+            state["decided"][call["id"]] = state["decision"]
+            state["awaiting"], state["decision"] = None, None
+            st.rerun()  # resume with the chat box unlocked
+        if verdict == "deny":
+            status.write(f"❌ Denied: `{name}`")
+            return _tool_error(call, "User denied execution of this function.")
+        status.write(f"✅ Approved: `{name}`")
+
+    result = call_function(call, verbose=True)
+    status.code(f"Wynik: {result['content'][:200]}...")
+    return result
+
+
+def run_agent():
+    """Starts or resumes the agent loop. Ends when the agent answers or is waiting for approval."""
+    state = st.session_state.agent
+    with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        status = st.status("Thinking...", expanded=True)
+        try:
+            while state["iter"] < MAX_ITERS:
+                if state["calls"] is None:
+                    status.write(f"🔄 Iteration {state['iter'] + 1}...")
+                    response = complete(
+                        state["messages"],
+                        system=system_prompt,
+                        tools=get_tools(),
+                        client=get_client(st.session_state.provider),
+                        provider=st.session_state.provider,
+                    )
+                    state["iter"] += 1
+                    assistant_message = message_to_dict(response.choices[0].message)
+                    state["messages"].append(assistant_message)
+
+                    # No tool calls = the agent is done
+                    if not assistant_message.get("tool_calls"):
+                        status.update(label="Done!", state="complete", expanded=False)
+                        message_placeholder.markdown(assistant_message["content"] or "")
+                        st.session_state.messages = state["messages"]
+                        save_memory(st.session_state.messages)
+                        st.session_state.agent = None
+                        return
+
+                    state["calls"], state["idx"], state["tool_messages"] = assistant_message["tool_calls"], 0, []
+
+                while state["idx"] < len(state["calls"]):
+                    outcome = _process_call(state["calls"][state["idx"]], state, status)
+                    if outcome is None:
+                        return  # waiting for a click; the script will resume the loop after the re-run
+                    state["tool_messages"].append(outcome)
+                    state["idx"] += 1
+
+                state["messages"].extend(state["tool_messages"])
+                state["calls"] = None
+
+            status.update(label="Iteration limit", state="error")
+            st.error(f"Maximum number of iterations reached ({MAX_ITERS}).")
+            st.session_state.agent = None
+        except Exception as e:
+            st.session_state.agent = None
+            st.error(f"Critical error: {e}")
+
+
+# 1. Get the text input (locked while the agent is waiting for approval)
+_agent = st.session_state.agent
+prompt_text = st.chat_input("What would you like to ask?", disabled=bool(_agent and _agent["awaiting"]))
+
+# 2. Check what the user did (Typed or Recorded?)
 user_action = None
 
 if prompt_text:
     user_action = "text"
-elif audio_input:
+elif audio_input and not (_agent and _agent["awaiting"]):
     user_action = "audio"
 
-# Jeśli jest jakakolwiek akcja (Tekst lub Audio)
+# If there is any action (Text or Audio)
 if user_action:
-    user_parts = []  # części wiadomości w formacie OpenAI
+    user_parts = []  # message parts in OpenAI format
     
-    # --- SCENARIUSZ A: TEKST ---
+    # --- SCENARIO A: TEXT ---
     if user_action == "text":
         user_parts.append({"type": "text", "text": prompt_text})
-        # Wyświetl w czacie
+        # Show in the chat
         with st.chat_message("user"):
             st.markdown(prompt_text)
 
-    # --- SCENARIUSZ B: AUDIO (GŁOS) ---
+    # --- SCENARIO B: AUDIO (VOICE) ---
     elif user_action == "audio":
-        # Wyciągamy bajty z nagrania
+        # Extract the bytes from the recording
         audio_bytes = audio_input['bytes']
         
-        # Dodajemy plik audio dla modelu
-        # (obsługują to np. Gemini i modele audio OpenAI; pozostali dostawcy zignorują nagranie)
+        # Add the audio file for the model
+        # (supported by e.g. Gemini and OpenAI audio models; other providers will ignore the recording)
         user_parts.append({"type": "input_audio", "input_audio": {"data": base64.b64encode(audio_bytes).decode(), "format": "wav"}})
-        # Dodajemy instrukcję pomocniczą
-        user_parts.append({"type": "text", "text": "Odsłuchaj to nagranie i wykonaj polecenie."})
+        # Add a helper instruction
+        user_parts.append({"type": "text", "text": "Listen to this recording and carry out the instruction."})
         
-        # Wyświetl odtwarzacz w czacie (żebyś widział, że wyszło)
+        # Show the player in the chat (so you can see it worked)
         with st.chat_message("user"):
             st.audio(audio_bytes, format="audio/wav")
-            st.caption("🎙️ Wiadomość głosowa")
+            st.caption("🎙️ Voice message")
 
-    # --- WSPÓLNE: OBRAZ (Jeśli dodano w pasku bocznym) ---
+    # --- COMMON: IMAGE (If added in the sidebar) ---
     if image_input:
         img_byte_arr = io.BytesIO()
         image_input.save(img_byte_arr, format=image_input.format)
@@ -170,95 +297,25 @@ if user_action:
             "type": "image_url",
             "image_url": {"url": f"data:image/{image_input.format.lower()};base64,{base64.b64encode(img_bytes).decode()}"},
         })
-        # Pokaż obrazek w czacie
+        # Show the image in the chat
         with st.chat_message("user"):
             st.image(image_input, width=200)
 
-    # 3. Zapisz w historii
+    # 3. Save in the history
     st.session_state.messages.append({"role": "user", "content": user_parts})
 
-    # 4. Uruchom Agenta
-    with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        status_container = st.status("Thinking...", expanded=True)
-        
-        current_messages = st.session_state.messages.copy()
-        MAX_ITERS = 20
-        
-        try:
-            for i in range(MAX_ITERS):
-                status_container.write(f"🔄 Iteracja {i+1}...")
-                
-                # Wywołanie API wybranego dostawcy
-                response = complete(
-                    current_messages,
-                    system=system_prompt,
-                    tools=get_tools(),
-                    client=get_client(st.session_state.provider),
-                    provider=st.session_state.provider,
-                )
+    # 4. Run the Agent
+    st.session_state.agent = {
+        "messages": st.session_state.messages.copy(),
+        "iter": 0,
+        "calls": None,         # queue of tool calls from the model's last response
+        "idx": 0,              # which call is being handled
+        "tool_messages": [],
+        "reviews": {},         # Reviewer results by call id
+        "awaiting": None,      # id of the call waiting for approval
+        "decision": None,      # user click: "approve" / "deny"
+        "decided": {},         # remembered decisions by call id
+    }
 
-                # Dodajemy odpowiedź do historii (tymczasowej)
-                assistant_message = message_to_dict(response.choices[0].message)
-                current_messages.append(assistant_message)
-
-                # Sprawdzamy czy agent chce zakończyć (brak wywołań funkcji)
-                tool_calls = assistant_message.get("tool_calls")
-                if not tool_calls:
-                    status_container.update(label="Gotowe!", state="complete", expanded=False)
-                    message_placeholder.markdown(assistant_message["content"] or "")
-
-                    # Aktualizujemy główną pamięć sesji
-                    st.session_state.messages = current_messages
-                    save_memory(st.session_state.messages)
-                    break
-
-                # Jeśli są funkcje do wykonania:
-                tool_messages = []
-
-                for tool_call in tool_calls:
-                    func_name = tool_call["function"]["name"]
-                    try:
-                        func_args = json.loads(tool_call["function"]["arguments"] or "{}")
-                    except json.JSONDecodeError:
-                        func_args = {}
-
-                    status_container.write(f"🛠️ Agent chce użyć: `{func_name}`")
-
-                    # --- REVIEWER ---
-                    if func_name == "write_file":
-                        file_path = func_args.get("file_path", "")
-                        if file_path.endswith(".py"):
-                            status_container.info(f"🔍 Reviewer sprawdza kod: {file_path}")
-                            content_to_review = func_args.get("content", "")
-                            is_approved, feedback = review_code(content_to_review)
-
-                            if not is_approved:
-                                status_container.error(f"❌ Reviewer odrzucił kod: {feedback}")
-                                tool_messages.append({
-                                    "role": "tool",
-                                    "tool_call_id": tool_call["id"],
-                                    "content": json.dumps({"error": f"Security Review Failed: {feedback}"}, ensure_ascii=False),
-                                })
-                                continue
-                            else:
-                                status_container.success("✅ Reviewer zatwierdził kod.")
-
-                    # --- HUMAN APPROVAL (Symulacja) ---
-                    if func_name in SENSITIVE_FUNCTIONS:
-                            status_container.warning(f"⚠️ Wykonuję wrażliwą akcję: {func_name}...")
-                            time.sleep(1)
-
-                    # --- WYKONANIE ---
-                    result = call_function(tool_call, verbose=True)
-
-                    # Wyświetl wynik w expanderze
-                    status_container.code(f"Wynik: {result['content'][:200]}...")
-
-                    tool_messages.append(result)
-
-                # Dodajemy wyniki funkcji do historii
-                current_messages.extend(tool_messages)
-
-        except Exception as e:
-            st.error(f"Błąd krytyczny: {e}")
+if st.session_state.agent:
+    run_agent()

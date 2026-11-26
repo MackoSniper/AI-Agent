@@ -56,7 +56,7 @@ def run_python_file(working_directory, file_path, args=None):
         return f"Error: executing Python file: {e}"
 
 
-# Schemat narzędzia w formacie OpenAI (działa u wszystkich dostawców; working_directory jest wstrzykiwany automatycznie)
+# Tool schema in OpenAI format (works with all providers; working_directory is injected automatically)
 schema_run_python_file = {
     "type": "function",
     "function": {

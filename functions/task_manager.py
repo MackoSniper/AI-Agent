@@ -60,7 +60,7 @@ def clear_tasks(working_directory):
     return "Task list cleared."
 
 
-# Schemat narzędzia w formacie OpenAI (działa u wszystkich dostawców; working_directory jest wstrzykiwany automatycznie)
+# Tool schema in OpenAI format (works with all providers; working_directory is injected automatically)
 schema_add_task = {
     "type": "function",
     "function": {

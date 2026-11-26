@@ -1,15 +1,15 @@
-# Używamy lekkiego obrazu Pythona
+# Use a lightweight Python image
 FROM python:3.11-slim
 
-# Instalujemy podstawowe narzędzia systemowe
+# Install basic system tools
 RUN apt-get update && apt-get install -y git curl && rm -rf /var/lib/apt/lists/*
 
-# === NOWOŚĆ: Instalujemy "Standardowy Zestaw" bibliotek ===
-# Dzięki temu Agent nie musi ich instalować ręcznie za każdym razem
+# === NEW: Install a "standard set" of libraries ===
+# This way the agent doesn't have to install them manually every time
 RUN pip install --no-cache-dir matplotlib pandas numpy requests seaborn scikit-learn openpyxl
 
-# Ustawiamy katalog roboczy
+# Set the working directory
 WORKDIR /workspace
 
-# Domyślna komenda
+# Default command
 CMD ["tail", "-f", "/dev/null"]

@@ -3,8 +3,8 @@ import requests # type: ignore[import]
 
 def search_web(query, count=5):
     """
-    Wyszukuje informacje w internecie używając Brave Search API.
-    Przydatne do zdobywania aktualnych informacji, dokumentacji lub rozwiązywania błędów.
+    Searches the internet for information using the Brave Search API.
+    Useful for getting up-to-date information, documentation, or solving errors.
     """
     api_key = os.environ.get("BRAVE_API_KEY")
     if not api_key:
@@ -17,7 +17,7 @@ def search_web(query, count=5):
     }
     params = {
         "q": query,
-        "count": min(count, 10)  # Limit max 10 wyników
+        "count": min(count, 10)  # Limit to at most 10 results
     }
 
     try:
@@ -30,7 +30,7 @@ def search_web(query, count=5):
             if not results:
                 return "No results found."
             
-            # Formatujemy wyniki w czytelną listę dla LLM
+            # Format the results into a readable list for the LLM
             formatted_results = []
             for i, result in enumerate(results, 1):
                 title = result.get("title", "No title")
@@ -51,7 +51,7 @@ def search_web(query, count=5):
         return f"Error connecting to search API: {str(e)}"
 
 
-# Schemat narzędzia w formacie OpenAI (działa u wszystkich dostawców; working_directory jest wstrzykiwany automatycznie)
+# Tool schema in OpenAI format (works with all providers; working_directory is injected automatically)
 schema_search_web = {
     "type": "function",
     "function": {

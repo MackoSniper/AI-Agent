@@ -15,24 +15,24 @@ def main():
     parser = argparse.ArgumentParser(description="AI Code Assistant")
     parser.add_argument("user_prompt", type=str, help="Prompt to send to the model")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
-    # === NOWOŚĆ: Flaga do czyszczenia pamięci ===
+    # === NEW: Flag for clearing memory ===
     parser.add_argument("--new", action="store_true", help="Start a fresh session (clear memory)")
     
     args = parser.parse_args()
 
-    # Obsługa czyszczenia pamięci
+    # Handle clearing memory
     if args.new:
         clear_memory()
 
-    # Dostawca wybierany zmienną LLM_PROVIDER w .env (patrz llm_provider.py)
+    # The provider is selected with the LLM_PROVIDER variable in .env (see llm_provider.py)
     client = get_client()
 
-    # === LOGIKA PAMIĘCI ===
-    # 1. Wczytujemy starą historię
+    # === MEMORY LOGIC ===
+    # 1. Load the old history
     messages = load_memory()
 
-    # 2. Jeśli historia jest pusta, zaczynamy od zera. 
-    #    Jeśli nie jest pusta, dopisujemy nową wiadomość użytkownika do istniejącej listy.
+    # 2. If the history is empty, we start from scratch. 
+    #    If it is not empty, we append the new user message to the existing list.
     messages.append({"role": "user", "content": args.user_prompt})
     
     if args.verbose:
@@ -40,12 +40,12 @@ def main():
         print(f"User prompt: {args.user_prompt}\n")
         print(f"[MEMORY] Loaded {len(messages)-1} previous messages from context.")
 
-    # Główna pętla myślenia
+    # Main thinking loop
     for i in range(MAX_ITERS):
         try:
             final_response = generate_content(client, messages, args.verbose)
             
-            # Po każdej udanej turze ZAPISUJEMY stan pamięci
+            # After every successful turn we SAVE the memory state
             save_memory(messages)
 
             if final_response:
@@ -92,13 +92,13 @@ def generate_content(client, messages, verbose):
                 "content": json.dumps({"error": reason}, ensure_ascii=False),
             })
 
-        # === KROK 1: AUTOMATYCZNY AUDYT (REVIEWER) ===
-        # Sprawdzamy kod tylko przy próbie zapisu pliku
+        # === STEP 1: AUTOMATIC AUDIT (REVIEWER) ===
+        # We check the code only when a file write is attempted
         if func_name == "write_file":
             file_path = func_args.get("file_path", "")
 
-            # Uruchamiamy Reviewera TYLKO dla plików .py
-            # Pliki .txt, .json, .md są bezpieczne (chyba że to skrypt bash, ale skupiamy się na Pythonie)
+            # We run the Reviewer ONLY for .py files
+            # Files .txt, .json, .md are safe (unless it is a bash script, but we focus on Python)
             if file_path.endswith(".py"):
                 is_approved, feedback = review_code(func_args.get("content", ""))
 
@@ -106,7 +106,7 @@ def generate_content(client, messages, verbose):
                     reject(f"Security Review Failed: {feedback}. Please fix the code and try again.")
                     continue
 
-        # === SECURITY CHECK (FAZA 1) ===
+        # === SECURITY CHECK (PHASE 1) ===
         if func_name in SENSITIVE_FUNCTIONS:
             print(f"\n⚠️  [SECURITY ALERT] Agent wants to execute: {func_name}")
             print(f"    Args: {func_args}")

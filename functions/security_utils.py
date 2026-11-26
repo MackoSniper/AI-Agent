@@ -3,8 +3,8 @@ from config import WORKING_DIR
 
 def is_safe_path(path: str) -> bool:
     """
-    Sprawdza, czy podana ścieżka znajduje się wewnątrz zdefiniowanego WORKING_DIR.
-    Zapobiega atakom typu Directory Traversal (np. ../../etc/passwd).
+    Checks whether the given path is inside the defined WORKING_DIR.
+    Prevents Directory Traversal attacks (np. ../../etc/passwd).
     """
     abs_working_dir = os.path.abspath(WORKING_DIR)
     
@@ -17,7 +17,7 @@ def is_safe_path(path: str) -> bool:
         return False
 
 def get_safe_path(path: str) -> str:
-    """Zwraca pełną ścieżkę jeśli jest bezpieczna, w przeciwnym razie rzuca błąd."""
+    """Returns the full path if it is safe, otherwise raises an error."""
     if not is_safe_path(path):
-        raise PermissionError(f"ACCESS DENIED: Próba dostępu poza folder roboczy: {path}")
+        raise PermissionError(f"ACCESS DENIED: Attempt to access outside the working folder: {path}")
     return os.path.abspath(os.path.join(WORKING_DIR, path))

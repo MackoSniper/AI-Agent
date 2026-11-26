@@ -30,7 +30,7 @@ def get_files_info(working_directory, directory="."):
         return f"Error: {str(e)}"
 
 
-# Schemat narzędzia w formacie OpenAI (działa u wszystkich dostawców; working_directory jest wstrzykiwany automatycznie)
+# Tool schema in OpenAI format (works with all providers; working_directory is injected automatically)
 schema_get_files_info = {
     "type": "function",
     "function": {

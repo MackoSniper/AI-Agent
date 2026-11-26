@@ -1,11 +1,11 @@
-"""Warstwa dostawców LLM.
+"""LLM provider layer.
 
-Wzorowane na repozytorium kursu 2026Z-PJATK-TEG: dostawcę wybiera się zmienną LLM_PROVIDER w .env.
-Wszyscy dostawcy poza Anthropic mówią protokołem zgodnym z OpenAI (zmienia się tylko base_url, klucz
-i nazwa modelu). Anthropic ma własny, cienki adapter, który wystawia ten sam interfejs
-`client.chat.completions.create(...)`, więc reszta kodu nie wie, z kim rozmawia.
+Modeled on the course repository 2026Z-PJATK-TEG: the provider is selected with the LLM_PROVIDER variable in .env.
+All providers except Anthropic speak an OpenAI-compatible protocol (only base_url, the key
+and the model name change). Anthropic has its own thin adapter that exposes the same interface
+`client.chat.completions.create(...)`, so the rest of the code does not know who it is talking to.
 
-Format wiadomości w całym projekcie to format OpenAI:
+The message format throughout the project is the OpenAI format:
     {"role": "user" | "assistant" | "tool", "content": ..., "tool_calls": [...], "tool_call_id": ...}
 """
 import json
@@ -19,8 +19,8 @@ load_dotenv()
 
 DEFAULT_PROVIDER = "gemini"
 
-# Model używany przez agenta dla każdego dostawcy. Nadpisanie: LLM_MODEL w .env.
-# Dla Azure to nazwa deploymentu, dla Ollamy nazwa pobranego modelu.
+# Model used by the agent for each provider. Override: LLM_MODEL in .env.
+# For Azure this is the deployment name, for Ollama the name of the pulled model.
 MODELS = {
     "gemini":     "gemini-2.5-flash",
     "openai":     "gpt-5-nano",
@@ -34,7 +34,7 @@ MODELS = {
 
 PROVIDERS = list(MODELS)
 
-# Zmienne środowiskowe wymagane przez dostawcę.
+# Environment variables required by the provider.
 REQUIRED_ENV = {
     "gemini":     ["GEMINI_API_KEY"],
     "openai":     ["OPENAI_API_KEY"],
@@ -54,12 +54,12 @@ BASE_URLS = {
     "proxy":      "http://localhost:8787/v1",
 }
 
-# Dostawcy, którzy akceptują parametr temperature (modele gpt-5 i nowe Claude go odrzucają).
+# Providers that accept the temperature parameter (gpt-5 models and new Claude models reject it).
 SUPPORTS_TEMPERATURE = {"gemini", "deepseek", "ollama", "openrouter"}
 
 
 def get_provider(provider=None):
-    """Zwraca nazwę dostawcy: argument, potem LLM_PROVIDER z .env, potem domyślny."""
+    """Returns the provider name: the argument, then LLM_PROVIDER from .env, then the default."""
     name = (provider or os.getenv("LLM_PROVIDER") or DEFAULT_PROVIDER).strip().lower()
     if name not in MODELS:
         raise RuntimeError(f"Unknown LLM_PROVIDER '{name}'. Available: {', '.join(PROVIDERS)}")
@@ -71,7 +71,7 @@ def get_model(provider=None):
 
 
 def missing_env(provider=None):
-    """Lista brakujących zmiennych środowiskowych dla dostawcy (pusta = wszystko jest)."""
+    """List of missing environment variables for the provider (empty = all present)."""
     return [k for k in REQUIRED_ENV[get_provider(provider)] if not os.environ.get(k)]
 
 
@@ -79,7 +79,7 @@ def describe(provider=None):
     return f"{get_provider(provider)} ({get_model(provider)})"
 
 
-# === ADAPTER ANTHROPIC =====================================================
+# === ANTHROPIC ADAPTER =====================================================
 
 def _split_data_url(url):
     header, _, data = url.partition(",")
@@ -102,7 +102,7 @@ def _user_parts_to_anthropic(content):
                 blocks.append({"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}})
             else:
                 blocks.append({"type": "image", "source": {"type": "url", "url": url}})
-        else:  # np. input_audio: Anthropic nie obsługuje audio
+        else:  # e.g. input_audio: Anthropic does not support audio
             blocks.append({"type": "text", "text": f"[{ptype} omitted: not supported by Anthropic]"})
     return blocks
 
@@ -132,7 +132,7 @@ def _to_anthropic(messages):
             last = out[-1] if out else None
             if last and last["role"] == "user" and isinstance(last["content"], list) \
                     and last["content"] and last["content"][-1].get("type") == "tool_result":
-                last["content"].append(block)  # wyniki równoległych wywołań trafiają do jednej wiadomości
+                last["content"].append(block)  # results of parallel calls go into a single message
             else:
                 out.append({"role": "user", "content": [block]})
     return "\n\n".join(system_parts), out
@@ -169,17 +169,17 @@ class _AnthropicCompletions:
 
 
 class AnthropicClient:
-    """Udaje klienta OpenAI: `client.chat.completions.create(...)`."""
+    """Pretends to be an OpenAI client: `client.chat.completions.create(...)`."""
 
     def __init__(self):
-        import anthropic  # type: ignore[import]  # import leniwy: pakiet potrzebny tylko dla tego dostawcy
+        import anthropic  # type: ignore[import]  # lazy import: the package is only needed for this provider
         self.chat = SimpleNamespace(completions=_AnthropicCompletions(anthropic.Anthropic()))
 
 
-# === KLIENT ================================================================
+# === CLIENT ================================================================
 
 def get_client(provider=None):
-    """Tworzy klienta dla dostawcy. Rzuca RuntimeError z czytelnym komunikatem, gdy brakuje konfiguracji."""
+    """Creates a client for the provider. Raises RuntimeError with a clear message when configuration is missing."""
     name = get_provider(provider)
     missing = missing_env(name)
     if missing:
@@ -191,7 +191,7 @@ def get_client(provider=None):
     from openai import AzureOpenAI, OpenAI  # type: ignore[import]
 
     if name == "azure":
-        return AzureOpenAI(api_version="2024-12-01-preview")  # endpoint i klucz z .env
+        return AzureOpenAI(api_version="2024-12-01-preview")  # endpoint and key from .env
     if name == "openai":
         return OpenAI()
     if name == "gemini":
@@ -199,12 +199,12 @@ def get_client(provider=None):
     if name in ("deepseek", "openrouter"):
         return OpenAI(base_url=BASE_URLS[name], api_key=os.environ[REQUIRED_ENV[name][0]])
     if name == "ollama":
-        return OpenAI(base_url=BASE_URLS[name], api_key="ollama")  # klucz wymagany, ale ignorowany
+        return OpenAI(base_url=BASE_URLS[name], api_key="ollama")  # key required but ignored
     return OpenAI(base_url=BASE_URLS[name], api_key="teg")  # proxy
 
 
 def complete(messages, system=None, tools=None, temperature=None, client=None, provider=None):
-    """Jedno wywołanie modelu. Zwraca odpowiedź w kształcie OpenAI (choices[0].message, usage)."""
+    """A single model call. Returns a response in the OpenAI shape (choices[0].message, usage)."""
     name = get_provider(provider)
     client = client or get_client(name)
 
@@ -218,11 +218,11 @@ def complete(messages, system=None, tools=None, temperature=None, client=None, p
 
 
 def message_to_dict(message):
-    """Zamienia odpowiedź modelu na zwykły słownik (do historii, pamięci JSON i kolejnego wywołania)."""
+    """Converts a model response into a plain dict (for the history, JSON memory and the next call)."""
     d = {"role": "assistant", "content": message.content}
     if getattr(message, "tool_calls", None):
         d["tool_calls"] = [{
-            "id": tc.id or f"call_{uuid.uuid4().hex[:12]}",  # niektórzy dostawcy zwracają puste id
+            "id": tc.id or f"call_{uuid.uuid4().hex[:12]}",  # some providers return an empty id
             "type": "function",
             "function": {"name": tc.function.name, "arguments": tc.function.arguments or "{}"},
         } for tc in message.tool_calls]

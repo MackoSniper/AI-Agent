@@ -1,24 +1,24 @@
-# --- BEZPIECZEŃSTWO (Najważniejsze) ---
+# --- SECURITY (Most important) ---
 .env
 .env.local
 
-# --- Środowisko Python/UV ---
+# --- Python/UV environment ---
 .venv/
 venv/
 env/
 __pycache__/
 *.pyc
 
-# --- Pamięć i Dane Agenta ---
-# Nie chcemy wrzucać historii rozmów
+# --- Agent memory and data ---
+# We don't want to commit conversation history
 memory.json
 
-# Nie chcemy wrzucać plików, które agent sam wygenerował (obrazki, skrypty tymczasowe)
+# We don't want to commit files the agent generated itself (images, temporary scripts)
 agent_workspace/*
-# Ale chcemy zachować sam folder, więc dodajemy wyjątek dla pliku .gitkeep
+# But we want to keep the folder itself, so we add an exception for the .gitkeep file
 !agent_workspace/.gitkeep
 
-# --- Inne śmieci ---
+# --- Other junk ---
 .DS_Store
 .vscode/
 .idea/

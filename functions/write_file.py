@@ -22,7 +22,7 @@ def write_file(working_directory, file_path, content):
         return f"Error: writing to file: {e}"
 
 
-# Schemat narzędzia w formacie OpenAI (działa u wszystkich dostawców; working_directory jest wstrzykiwany automatycznie)
+# Tool schema in OpenAI format (works with all providers; working_directory is injected automatically)
 schema_write_file = {
     "type": "function",
     "function": {

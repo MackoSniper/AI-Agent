@@ -33,7 +33,7 @@ def test_approved(verdict):
     "verdict",
     [
         "REJECTED: infinite loop",
-        "REJECTED: this cannot be APPROVED",  # stary kod przepuszczał to przez `in`
+        "REJECTED: this cannot be APPROVED",  # the old code let this through via `in`
         "NOT APPROVED",
         "",
     ],

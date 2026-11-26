@@ -22,7 +22,7 @@ def test_paths_outside_workdir_are_blocked(workdir, path):
 
 
 def test_sibling_dir_with_same_prefix_is_blocked(workdir):
-    # /tmp/work vs /tmp/work_evil: zwykłe startswith() by to przepuściło, commonpath nie
+    # /tmp/work vs /tmp/work_evil: a plain startswith() would let this through, commonpath does not
     sibling = f"../{workdir.name}_evil/x.txt"
     assert not security_utils.is_safe_path(sibling)
 

@@ -6,7 +6,7 @@ def install_package(package_name):
     Installs a Python package using pip in the current environment.
     """
     try:
-        # Używamy sys.executable, aby instalować w TYM SAMYM środowisku
+        # We use sys.executable to install into the SAME environment
         subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
         return f"Successfully installed '{package_name}'."
     except subprocess.CalledProcessError as e:
@@ -15,7 +15,7 @@ def install_package(package_name):
         return f"Unexpected error: {str(e)}"
 
 
-# Schemat narzędzia w formacie OpenAI (działa u wszystkich dostawców; working_directory jest wstrzykiwany automatycznie)
+# Tool schema in OpenAI format (works with all providers; working_directory is injected automatically)
 schema_install_package = {
     "type": "function",
     "function": {

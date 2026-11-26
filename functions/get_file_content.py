@@ -4,20 +4,20 @@ from config import MAX_CHARS
 def get_file_content(working_directory, file_path):
     try:   
         working_dir_abs = os.path.abspath(working_directory)
-        # Zmieniam nazwę zmiennej na target_path, bo to plik, a nie katalog
+        # Renamed the variable to target_path, because it is a file, not a directory
         target_path = os.path.normpath(os.path.join(working_dir_abs, file_path))
         
-        # Zabezpieczenie przed wyjściem poza katalog (Path Traversal) - TO JEST DOBRZE
+        # Protection against leaving the directory (Path Traversal) - THIS IS GOOD
         if os.path.commonpath([working_dir_abs, target_path]) != working_dir_abs:
             return f'Error: Cannot read "{file_path}" as it is outside the permitted working directory'
         
         if not os.path.isfile(target_path):
             return f'Error: File not found or is not a regular file: "{file_path}"'
         
-        # --- POPRAWKA: Dodanie encoding i errors ---
+        # --- FIX: Added encoding and errors ---
         with open(target_path, "r", encoding="utf-8", errors="replace") as f:
             content = f.read(MAX_CHARS)
-            # Sprawdzenie, czy jest coś więcej
+            # Check whether there is more
             if f.read(1):
                 content += f'\n[...File "{file_path}" truncated at {MAX_CHARS} characters...]'
         
@@ -27,7 +27,7 @@ def get_file_content(working_directory, file_path):
         return f"Error: reading file: {str(e)}"
 
 
-# Schemat narzędzia w formacie OpenAI (działa u wszystkich dostawców; working_directory jest wstrzykiwany automatycznie)
+# Tool schema in OpenAI format (works with all providers; working_directory is injected automatically)
 schema_get_file_content = {
     "type": "function",
     "function": {

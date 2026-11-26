@@ -30,6 +30,6 @@ def test_clear_tasks(tmp_path):
 
 def test_tasks_persist_between_calls(tmp_path):
     wd = str(tmp_path)
-    add_task(wd, "zapisane na dysku")
+    add_task(wd, "saved to disk")
     assert (tmp_path / "tasks.json").exists()
-    assert "zapisane na dysku" in list_tasks(wd)
+    assert "saved to disk" in list_tasks(wd)
