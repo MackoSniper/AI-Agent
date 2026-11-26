@@ -107,7 +107,6 @@ with st.sidebar:
     st.success("✅ Code Reviewer")
     st.success("✅ Long-term Memory")
     st.success("✅ Internet Access")
-    st.success("✅ Docker Sandbox")
 
 # === UI: MAIN CHAT WINDOW ===
 st.title("🤖 AI Super-Agent")
