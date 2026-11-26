@@ -5,9 +5,10 @@ A coding agent you can talk to in the browser or from the terminal. It plans tas
 ## About this project
 
 This is a learning project. It started as the guided "Build an AI Agent" course on
-[Boot.dev](https://www.boot.dev), which covered the basic agent loop and file tools on the
-Gemini API. On top of the course version I added the multi-provider layer, streaming output,
-chat history and working Approve/Deny buttons in the Streamlit app.
+[Boot.dev](https://www.boot.dev), which covered the basic agent loop and four file tools on the
+Gemini API. On top of the course version I added a code reviewer, web search, task planning,
+package installation, persistent memory, a Streamlit app with image and voice input, and human
+approvals. Later I added the multi-provider layer, streaming, chat history and the pytest test suite.
 
 It is not meant for production use. Scripts run directly on your machine, not in an
 isolated container, so treat it as a playground and read the code before approving it.
