@@ -2,6 +2,16 @@
 
 A coding agent you can talk to in the browser or from the terminal. It plans tasks, reads and writes files in a dedicated workspace folder, runs Python scripts, searches the web, and asks for your approval before doing anything risky. It works with many LLM providers (Gemini, OpenAI, Anthropic, DeepSeek, OpenRouter, Azure, Ollama, ...), and you switch between them with one setting.
 
+## About this project
+
+This is a learning project. It started as the guided "Build an AI Agent" course on
+[Boot.dev](https://www.boot.dev), which covered the basic agent loop and file tools on the
+Gemini API. On top of the course version I added the multi-provider layer, streaming output,
+chat history and working Approve/Deny buttons in the Streamlit app.
+
+It is not meant for production use. Scripts run directly on your machine, not in an
+isolated container, so treat it as a playground and read the code before approving it.
+
 ## Overview
 
 - **Two interfaces:** a Streamlit chat app (`app.py`) and a one-shot CLI (`main.py`). Both stream the answer as it is written.
