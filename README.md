@@ -1,6 +1,6 @@
 # AI Agent
 
-A coding agent you can talk to in the browser or from the terminal. It plans tasks, reads and writes files in a sandboxed workspace folder, runs Python scripts, searches the web, and asks for your approval before doing anything risky. It works with many LLM providers (Gemini, OpenAI, Anthropic, DeepSeek, OpenRouter, Azure, Ollama, ...), and you switch between them with one setting.
+A coding agent you can talk to in the browser or from the terminal. It plans tasks, reads and writes files in a dedicated workspace folder, runs Python scripts, searches the web, and asks for your approval before doing anything risky. It works with many LLM providers (Gemini, OpenAI, Anthropic, DeepSeek, OpenRouter, Azure, Ollama, ...), and you switch between them with one setting.
 
 ## Overview
 
@@ -133,7 +133,7 @@ prompts.py          System prompt and reviewer prompt
 config.py           Workspace path and limits
 functions/          Built-in tools (one file per tool)
 tests/              Test suite
-agent_workspace/    The agent's sandbox: its files, new tools, saved chats (git-ignored)
+agent_workspace/    The agent's workspace: its files, new tools, saved chats (git-ignored)
 Dockerfile          Optional image with common data-science libraries (not used by the app itself)
 ```
 
