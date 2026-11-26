@@ -93,6 +93,8 @@ Choose the provider with `LLM_PROVIDER` in `.env`:
 | `ollama` | none (runs locally) | `gemma4:e4b` (set `OLLAMA_CHAT` to change) |
 | `proxy` | none ([teg-proxy](https://github.com/adrianstando/2026Z-PJATK-TEG/tree/main/tools/teg-proxy)) | `copilot/gpt-5-mini` |
 
+**Tested with:** OpenRouter (`deepseek/deepseek-v4.1-flash`). The other providers are supported by the code and unit tests but have not been run end-to-end.
+
 Set `LLM_MODEL` to use a different model with any provider. For example, OpenRouter with DeepSeek:
 
 ```
