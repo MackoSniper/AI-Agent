@@ -22,7 +22,7 @@ isolated container, so treat it as a playground and read the code before approvi
 - **Safety:**
   - All file access is confined to the `agent_workspace/` folder.
   - Every Python file the agent writes is checked by a second "reviewer" model call first.
-  - Writing a file and running a script both need your explicit approval (Approve / Deny buttons in the app, `y/N` prompt in the CLI).
+  - Writing a file, running a script and installing a package all need your explicit approval (Approve / Deny buttons in the app, `y/N` prompt in the CLI).
 - **Chat history:** every conversation is saved. Start new chats, switch between them, or delete them from the sidebar.
 - **Multimodal input (app):** attach images and record voice messages from the chat bar.
 
@@ -65,7 +65,7 @@ Open http://localhost:8501.
 
 - **Chat bar:** type a message, use 📎 to attach images, or 🎤 to record a voice message.
 - **Sidebar:** start a new chat, open or delete previous chats (🗑️), and pick the LLM provider. A red message appears if that provider's key is missing in `.env`.
-- **Approvals:** before the agent writes a file or runs a script, a card shows exactly what it wants to do. Nothing happens until you click **Approve** or **Deny**.
+- **Approvals:** before the agent writes a file, runs a script or installs a package, a card shows exactly what it wants to do. Nothing happens until you click **Approve** or **Deny**.
 
 ### Command line
 
@@ -117,7 +117,7 @@ The model must support tool calling. Small local models often call tools badly.
 | `get_file_content` | Read a file (first 10,000 characters) |
 | `write_file` | Create or overwrite a file (**needs approval**; `.py` files are reviewed first) |
 | `run_python_file` | Run a Python file with a 30 s timeout (**needs approval**) |
-| `install_package` | `pip install` a missing library |
+| `install_package` | `pip install` a missing library (**needs approval**) |
 | `search_web` | Search the web with Brave Search |
 | `add_task`, `list_tasks`, `finish_task`, `clear_tasks` | Keep a to-do list for multi-step jobs |
 
@@ -131,7 +131,7 @@ Every conversation is saved in `agent_workspace/chats/`. Chats do not depend on 
 
 - File tools cannot leave `agent_workspace/`.
 - `run_python_file` runs scripts **on your machine** (not in a container), with a 30 s timeout. The reviewer and your approval are the protection. Read the code on the approval card before you click Approve.
-- `install_package` runs `pip install` without asking, so keep an eye on the tool log.
+- `install_package` also needs your approval. It installs into this project's environment, so check the package name before you approve.
 - Images and voice messages are sent to the selected provider. Do not attach anything you would not send to that service.
 
 ## Project layout

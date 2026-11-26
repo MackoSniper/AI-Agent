@@ -3,13 +3,11 @@ import json
 import sys
 
 from call_function import call_function, get_tools
-from config import MAX_ITERS
+from config import MAX_ITERS, SENSITIVE_FUNCTIONS
 from llm_provider import describe, get_client, stream_complete
 from prompts import system_prompt
 from reviewer import review_code
 from memory import load_memory, save_memory, clear_memory
-
-SENSITIVE_FUNCTIONS = ["write_file", "run_python_file"]
 
 def main():
     parser = argparse.ArgumentParser(description="AI Code Assistant")

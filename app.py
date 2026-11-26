@@ -6,7 +6,7 @@ import base64
 
 # Import our modules
 from call_function import call_function, get_tools
-from config import MAX_ITERS
+from config import MAX_ITERS, SENSITIVE_FUNCTIONS
 from llm_provider import PROVIDERS, describe, get_client, get_model, get_provider, missing_env, stream_complete
 from prompts import system_prompt
 from reviewer import review_code
@@ -14,9 +14,6 @@ from memory import delete_chat, get_active_chat, list_chats, load_chat, new_chat
 
 # Page configuration
 st.set_page_config(page_title="AI Agent Workspace", page_icon="🤖", layout="wide")
-
-# Sensitive functions that require approval
-SENSITIVE_FUNCTIONS = ["write_file", "run_python_file"]
 
 # === STATE INITIALIZATION (SESSION STATE) ===
 if "chat_id" not in st.session_state:
@@ -173,6 +170,8 @@ def _approval_card(call, name, args):
         st.code(args.get("content", ""), language="python" if args.get("file_path", "").endswith(".py") else None)
     elif name == "run_python_file":
         st.caption(f"File: `{args.get('file_path', '')}`  |  arguments: `{args.get('args') or []}`")
+    elif name == "install_package":
+        st.caption(f"Package: `{args.get('package_name', '')}` (installed with pip into this project's environment)")
     else:
         st.json(args)
     col_ok, col_no, _ = st.columns([1, 1, 4])
